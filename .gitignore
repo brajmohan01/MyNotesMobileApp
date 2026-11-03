@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+mobile/node_modules/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Swytchcode authentication and local state
+.swytchcode/
+.swy/
+.swy-state/
+
+# Expo
+mobile/.expo/
+mobile/dist/
+
+# Build outputs
+dist/
+build/
+*.apk
+*.aab
+
+# Logs
+*.log
+npm-debug.log*
+.swytchcode/workspace.json

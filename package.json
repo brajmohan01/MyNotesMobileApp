@@ -1,0 +1,20 @@
+{
+  "name": "mynotesmobileapp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/local.js",
+    "dev": "node --watch src/local.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@swytchcode/runtime": "^1.2.1",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  }
+}
