@@ -1,0 +1,137 @@
+{
+  "Google Drive.drive@v3": {
+    "version": "v3",
+    "sandbox_endpoint": "https://www.googleapis.com/drive/v3",
+    "production_endpoint": "https://www.googleapis.com/drive/v3",
+    "methods": 64,
+    "auth": {
+      "provider_slug": "Google Drive",
+      "scopes": [],
+      "type": "oauth2"
+    },
+    "init_details": {
+      "VERSION": "2.0.2",
+      "auth_type": "oauth2"
+    },
+    "execution_policy": {
+      "max_retries": 3,
+      "base_delay_ms": 500,
+      "max_delay_ms": 30000,
+      "http_timeout_ms": 30000,
+      "connect_timeout_ms": 5000,
+      "total_timeout_ms": 90000,
+      "retry_on": [
+        429,
+        503,
+        504
+      ],
+      "non_retryable": [
+        400,
+        401,
+        403,
+        404,
+        422
+      ],
+      "on_401": "fail",
+      "max_concurrent": 5,
+      "max_response_bytes": 102400,
+      "idempotency": {
+        "mode": "none",
+        "header_name": "Idempotency-Key",
+        "scope": "call"
+      }
+    },
+    "library_uuid": "88cc6663-5910-4ca5-8e43-7417240f58fb",
+    "private": false
+  },
+  "Google Drive.driveactivity@v2": {
+    "version": "v2",
+    "sandbox_endpoint": "",
+    "production_endpoint": "https://driveactivity.googleapis.com/",
+    "methods": 1,
+    "auth": {
+      "provider_slug": "Google Drive",
+      "scopes": [],
+      "type": "oauth2"
+    },
+    "init_details": {
+      "VERSION": "2.0.2",
+      "auth_type": "oauth2"
+    },
+    "execution_policy": {
+      "max_retries": 3,
+      "base_delay_ms": 500,
+      "max_delay_ms": 30000,
+      "http_timeout_ms": 30000,
+      "connect_timeout_ms": 5000,
+      "total_timeout_ms": 90000,
+      "retry_on": [
+        429,
+        503,
+        504
+      ],
+      "non_retryable": [
+        400,
+        401,
+        403,
+        404,
+        422
+      ],
+      "on_401": "fail",
+      "max_concurrent": 5,
+      "max_response_bytes": 102400,
+      "idempotency": {
+        "mode": "none",
+        "header_name": "Idempotency-Key",
+        "scope": "call"
+      }
+    },
+    "library_uuid": "442945b3-3ebd-4e37-83ff-d51506b5723f",
+    "private": false
+  },
+  "Google Drive.drivelabels@v2beta": {
+    "version": "v2beta",
+    "sandbox_endpoint": "",
+    "production_endpoint": "https://drivelabels.googleapis.com/",
+    "methods": 17,
+    "auth": {
+      "provider_slug": "Google Drive",
+      "scopes": [],
+      "type": "oauth2"
+    },
+    "init_details": {
+      "VERSION": "2.0.2",
+      "auth_type": "oauth2"
+    },
+    "execution_policy": {
+      "max_retries": 3,
+      "base_delay_ms": 500,
+      "max_delay_ms": 30000,
+      "http_timeout_ms": 30000,
+      "connect_timeout_ms": 5000,
+      "total_timeout_ms": 90000,
+      "retry_on": [
+        429,
+        503,
+        504
+      ],
+      "non_retryable": [
+        400,
+        401,
+        403,
+        404,
+        422
+      ],
+      "on_401": "fail",
+      "max_concurrent": 5,
+      "max_response_bytes": 102400,
+      "idempotency": {
+        "mode": "none",
+        "header_name": "Idempotency-Key",
+        "scope": "call"
+      }
+    },
+    "library_uuid": "0f81e15a-817d-402e-aca7-d97e4fbc9c1b",
+    "private": false
+  }
+}
