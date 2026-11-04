@@ -10,6 +10,20 @@ import {
 
 const router = express.Router();
 
+function isDriveNotConnectedError(error) {
+  if (
+    isSwytchcodeError(error) &&
+    error.details?.category === "tenant_not_connected"
+  ) {
+    return true;
+  }
+
+  return (
+    error instanceof Error &&
+    /"category"\s*:\s*"tenant_not_connected"/.test(error.message)
+  );
+}
+
 // GET /api/notes
 // GET /api/notes?search=project
 router.get("/", async (req, res) => {
@@ -39,10 +53,7 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("List notes error:", error);
 
-    if (
-      isSwytchcodeError(error) &&
-      error.details?.category === "tenant_not_connected"
-    ) {
+    if (isDriveNotConnectedError(error)) {
       return res.status(409).json({
         success: false,
         code: "drive_not_connected",
@@ -103,10 +114,7 @@ router.get("/:id", async (req, res) => {
   } catch (error) {
     console.error("Read note error:", error);
 
-    if (
-      isSwytchcodeError(error) &&
-      error.details?.category === "tenant_not_connected"
-    ) {
+    if (isDriveNotConnectedError(error)) {
       return res.status(409).json({
         success: false,
         code: "drive_not_connected",
