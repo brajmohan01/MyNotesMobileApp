@@ -15,7 +15,17 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 
-const API_URL = "http://192.168.1.14:3000/api";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
+
+function getApiUrl(path) {
+  if (!API_BASE_URL) {
+    throw new Error(
+      "Set EXPO_PUBLIC_API_URL in mobile/.env to your backend URL."
+    );
+  }
+
+  return `${API_BASE_URL}/api${path}`;
+}
 
 export default function App() {
   const [notes, setNotes] = useState([]);
@@ -30,7 +40,9 @@ export default function App() {
     try {
       setError("");
 
-      const url = `${API_URL}/notes?search=${encodeURIComponent(query)}`;
+      const url = getApiUrl(
+        `/notes?search=${encodeURIComponent(query)}`
+      );
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -58,7 +70,9 @@ export default function App() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(`${API_URL}/notes/${note.id}`);
+      const response = await fetch(
+        getApiUrl(`/notes/${encodeURIComponent(note.id)}`)
+      );
       const data = await response.json();
 
       if (!response.ok || !data.success) {
