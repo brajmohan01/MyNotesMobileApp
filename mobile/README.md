@@ -36,3 +36,12 @@ the APK if the Render URL changes.
 
 For an internal preview APK, set the same variable in the EAS `preview`
 environment and use `--profile preview`.
+
+## Render backend
+
+The backend Docker container bootstraps the Swytchcode provider bundle when it
+starts. Set `SWYTCHCODE_TOKEN` as a secret environment variable in the Render
+service settings so the CLI can fetch the bundle. Keep this token on the
+backend only; do not put it in `mobile/.env`, an `EXPO_PUBLIC_` variable, or
+source control. Redeploy the Render service after changing the Dockerfile or
+setting the secret.
