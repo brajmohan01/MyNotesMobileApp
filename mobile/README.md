@@ -1,47 +1,66 @@
 # MyNotes Mobile
 
-## Test with Expo Go
+## Android development build
 
-1. Copy `.env.example` to `.env` and set `EXPO_PUBLIC_API_URL` to the backend's
-   public URL, without the `/api` suffix. For a local backend, use your
-   computer's LAN IP address, such as `http://192.168.1.20:3000`.
-2. Install dependencies and start Expo:
+Google Sign-In uses native Android code, so this app must be tested with an
+Expo development build rather than Expo Go.
+
+1. Keep the Firebase Android config at `google-services.json`. It must match
+   the Android package name `com.brajmohan.mynotes`.
+2. Copy `.env.example` to `.env` if needed. Set `EXPO_PUBLIC_API_URL` to the
+   backend's public URL, without the `/api` suffix.
+3. Build and install the development APK, then start Metro:
 
    ```sh
    npm ci
-   npx expo start --tunnel
+   npx eas-cli@latest build --platform android --profile development
+   npx expo start --dev-client --tunnel
    ```
 
-3. Scan the QR code with Expo Go. When using a local backend, the phone and
-   computer must be on the same network. The tunnel only exposes the Expo
-   development server; use the Render URL to access the API from anywhere.
+4. Open the installed MyNotes development app and connect it to the Metro
+   server. The Render URL is used for the API.
+
+Get the Android SHA-1 certificate fingerprint with
+`npx eas-cli@latest credentials --platform android`, register it in Firebase
+Project settings, then download an updated `google-services.json` and rebuild.
+Google Sign-In requires Google to be enabled in Firebase Authentication.
+
+Each user signs into MyNotes with Google, then selects **Connect Google Drive**
+in the app. Each user's own Drive must contain exactly one folder named
+`My Notes`; put that user's notes in it.
 
 ## Build an Android APK
 
-Set `EXPO_PUBLIC_API_URL` to the Render service's HTTPS URL in the EAS
-`production` environment, then run:
+The production EAS environment must contain every `EXPO_PUBLIC_*` value from
+`.env.example`. From the `mobile` directory, copy `.env.example` to `.env` if
+needed, verify the Render URL and Google Web client ID have no trailing slash,
+and upload the public values:
 
 ```sh
-npx eas-cli@latest env:set \
-  --name EXPO_PUBLIC_API_URL \
-  --value https://your-render-service.onrender.com \
-  --environment production \
-  --visibility plaintext
+npx eas-cli@latest env:push --environment production --path .env
 npx eas-cli@latest build --platform android --profile production
 ```
+
+For development or preview APKs, push the same variables to the matching EAS
+environment and build with the corresponding profile. These are public client
+configuration values; never put server credentials in `mobile/.env`.
 
 The APK is built in the cloud and the download link is provided by EAS when the
 build completes. The API URL is embedded in the app at build time, so rebuild
 the APK if the Render URL changes.
 
-For an internal preview APK, set the same variable in the EAS `preview`
-environment and use `--profile preview`.
-
 ## Render backend
 
 The backend Docker container bootstraps the Swytchcode provider bundle when it
-starts. Set `SWYTCHCODE_TOKEN` as a secret environment variable in the Render
-service settings so the CLI can fetch the bundle. Keep this token on the
-backend only; do not put it in `mobile/.env`, an `EXPO_PUBLIC_` variable, or
-source control. Redeploy the Render service after changing the Dockerfile or
-setting the secret.
+starts. Set these as secret environment variables in the Render service:
+
+- `SWYTCHCODE_TOKEN` to let the backend use Swytchcode.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` to verify Firebase ID tokens. Create a
+  service account private key for project `mynotes-13c34` in Firebase Project
+  settings → Service accounts, and put the complete JSON file contents in this
+  Render variable. Never commit or share the private key.
+
+Swytchcode stores per-user Drive credentials in its local home directory.
+Attach a Render persistent disk mounted at `/var/data`; the Docker image sets
+`HOME=/var/data` so those credentials survive restarts and redeploys. Without
+the disk, users will have to reconnect Drive after the service restarts.

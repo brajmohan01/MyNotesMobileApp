@@ -13,9 +13,44 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  GoogleSignin,
+  isSuccessResponse,
+} from "@react-native-google-signin/google-signin";
+import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithCredential,
+  signOut,
+} from "firebase/auth";
+import * as WebBrowser from "expo-web-browser";
 import { WebView } from "react-native-webview";
+import {
+  auth,
+  firebaseConfigError,
+  googleWebClientId,
+} from "./firebase";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
+const missingAppConfig = [
+  !API_BASE_URL && "EXPO_PUBLIC_API_URL",
+  !googleWebClientId && "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
+].filter(Boolean);
+const appConfigError = [
+  firebaseConfigError,
+  missingAppConfig.length
+    ? `Missing ${missingAppConfig.join(", ")}.`
+    : "",
+]
+  .filter(Boolean)
+  .join("\n");
+
+if (googleWebClientId) {
+  GoogleSignin.configure({
+    webClientId: googleWebClientId,
+    offlineAccess: false,
+  });
+}
 
 function getApiUrl(path) {
   if (!API_BASE_URL) {
@@ -28,36 +63,100 @@ function getApiUrl(path) {
 }
 
 export default function App() {
+  const [user, setUser] = useState(auth?.currentUser ?? null);
+  const [authReady, setAuthReady] = useState(Boolean(appConfigError));
   const [notes, setNotes] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedNote, setSelectedNote] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [needsDriveConnection, setNeedsDriveConnection] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  async function apiRequest(path, options = {}) {
+    if (!user) {
+      throw new Error("Sign in to continue.");
+    }
+
+    const token = await user.getIdToken();
+    const response = await fetch(getApiUrl(path), {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      const requestError = new Error(data.message || "Request failed.");
+      requestError.code = data.code;
+      throw requestError;
+    }
+
+    return data;
+  }
+
+  async function signInWithGoogle() {
+    try {
+      setAuthLoading(true);
+      setError("");
+
+      if (!googleWebClientId) {
+        throw new Error("Google sign-in is not configured in mobile/.env.");
+      }
+
+      await GoogleSignin.hasPlayServices({
+        showPlayServicesUpdateDialog: true,
+      });
+      const response = await GoogleSignin.signIn();
+
+      if (!isSuccessResponse(response)) {
+        return;
+      }
+
+      if (!response.data.idToken) {
+        throw new Error("Google did not return an ID token.");
+      }
+
+      const credential = GoogleAuthProvider.credential(response.data.idToken);
+      await signInWithCredential(auth, credential);
+    } catch (signInError) {
+      setError(signInError.message || "Unable to sign in with Google.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function signOutUser() {
+    try {
+      await signOut(auth);
+      await GoogleSignin.signOut();
+    } catch (signOutError) {
+      setError(signOutError.message || "Unable to sign out.");
+    }
+  }
 
   // Fetch notes from Express backend
   async function fetchNotes(query = "") {
+    if (!user) return;
+
     try {
       setError("");
+      setNeedsDriveConnection(false);
 
-      const url = getApiUrl(
+      const data = await apiRequest(
         `/notes?search=${encodeURIComponent(query)}`
       );
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error("Unable to connect to notes API");
-      }
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error("Unable to load notes");
-      }
-
       setNotes(data.notes);
     } catch (err) {
-      setError(err.message || "Something went wrong");
+      if (err.code === "drive_not_connected") {
+        setNotes([]);
+        setNeedsDriveConnection(true);
+      } else {
+        setError(err.message || "Something went wrong");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,21 +169,36 @@ export default function App() {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
-        getApiUrl(`/notes/${encodeURIComponent(note.id)}`)
+      const data = await apiRequest(
+        `/notes/${encodeURIComponent(note.id)}`
       );
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error("Unable to open note");
-      }
 
       setSelectedNote({
         ...note,
         content: data.content,
       });
     } catch (err) {
-      setError(err.message || "Unable to open note");
+      if (err.code === "drive_not_connected") {
+        setNeedsDriveConnection(true);
+      } else {
+        setError(err.message || "Unable to open note");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function connectGoogleDrive() {
+    try {
+      setLoading(true);
+      setError("");
+      const { url } = await apiRequest("/drive/connect", {
+        method: "POST",
+      });
+      await WebBrowser.openBrowserAsync(url);
+      await fetchNotes(search);
+    } catch (connectError) {
+      setError(connectError.message || "Unable to connect Google Drive.");
     } finally {
       setLoading(false);
     }
@@ -96,21 +210,31 @@ export default function App() {
     setError("");
   }
 
-  // Initial notes loading
   useEffect(() => {
-    fetchNotes();
+    if (appConfigError || !auth) return;
+
+    return onAuthStateChanged(auth, (signedInUser) => {
+      setUser(signedInUser);
+      setAuthReady(true);
+      setSelectedNote(null);
+
+      if (!signedInUser) {
+        setNotes([]);
+        setNeedsDriveConnection(false);
+        setLoading(false);
+      }
+    });
   }, []);
 
-  // Search notes with debounce
   useEffect(() => {
-    if (selectedNote) return;
+    if (!authReady || !user || selectedNote) return;
 
     const timer = setTimeout(() => {
       fetchNotes(search);
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [search, selectedNote]);
+  }, [authReady, user, search, selectedNote]);
 
   // Handle Android hardware back button
   useEffect(() => {
@@ -128,6 +252,55 @@ export default function App() {
 
     return () => backHandler.remove();
   }, [selectedNote]);
+
+  if (!authReady) {
+    return (
+      <SafeAreaView style={styles.authContainer}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </SafeAreaView>
+    );
+  }
+
+  if (appConfigError) {
+    return (
+      <SafeAreaView style={styles.authContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#111827" />
+        <Text style={styles.appTitle}>MyNotes setup required</Text>
+        <Text style={styles.authDescription}>
+          This APK is missing its public app configuration:
+          {"\n\n"}
+          {appConfigError}
+          {"\n\n"}
+          Add these values to the EAS build environment and build a new APK.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.authContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#111827" />
+        <Text style={styles.appTitle}>MyNotes</Text>
+        <Text style={styles.authDescription}>
+          Sign in with Google to connect your Drive and view your notes.
+        </Text>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <TouchableOpacity
+          onPress={signInWithGoogle}
+          style={styles.authButton}
+          disabled={authLoading}
+          activeOpacity={0.8}
+        >
+          {authLoading ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.authButtonText}>Continue with Google</Text>
+          )}
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   // NOTE READER SCREEN
   if (selectedNote) {
@@ -211,6 +384,9 @@ export default function App() {
         >
           <Text style={styles.refreshButton}>↻</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={signOutUser} style={styles.signOutButton}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
@@ -239,6 +415,19 @@ export default function App() {
           color="#2563eb"
           style={styles.loader}
         />
+      ) : needsDriveConnection ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            Connect your Google Drive to see your notes.
+          </Text>
+          <TouchableOpacity
+            onPress={connectGoogleDrive}
+            style={styles.authButton}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.authButtonText}>Connect Google Drive</Text>
+          </TouchableOpacity>
+        </View>
       ) : error ? (
         <View style={styles.emptyState}>
           <Text style={styles.errorText}>{error}</Text>
@@ -294,7 +483,7 @@ export default function App() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          Synced from your Google Drive
+          {user.email || "Signed in"} · Google Drive
         </Text>
       </View>
     </SafeAreaView>
@@ -302,6 +491,39 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  authContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111827",
+    padding: 28,
+  },
+
+  authDescription: {
+    color: "#cbd5e1",
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 12,
+    marginBottom: 24,
+    textAlign: "center",
+  },
+
+  authButton: {
+    alignItems: "center",
+    backgroundColor: "#2563eb",
+    borderRadius: 12,
+    justifyContent: "center",
+    marginTop: 18,
+    minHeight: 50,
+    paddingHorizontal: 20,
+  },
+
+  authButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
@@ -351,6 +573,17 @@ const styles = StyleSheet.create({
   refreshButton: {
     color: "#ffffff",
     fontSize: 30,
+  },
+
+  signOutButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+
+  signOutText: {
+    color: "#93c5fd",
+    fontSize: 13,
+    fontWeight: "600",
   },
 
   searchContainer: {

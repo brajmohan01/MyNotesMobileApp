@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "156696498305",
+    "project_id": "mynotes-13c34",
+    "storage_bucket": "mynotes-13c34.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:156696498305:android:ceb3c1368e737fcd2b7d80",
+        "android_client_info": {
+          "package_name": "com.brajmohan.mynotes"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "156696498305-5ioruh0rkt57g5ahu4orunmvfod250tc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brajmohan.mynotes",
+            "certificate_hash": "91e1b7c001e83bbe4cb8ba678d59735a7f786b95"
+          }
+        },
+        {
+          "client_id": "156696498305-1ucvqfh5gd9iu7kfoems18qdnl2e181u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqWX4-0PZzYVXWBZx5aoAFaiPNkWWNuSc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "156696498305-1ucvqfh5gd9iu7kfoems18qdnl2e181u.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

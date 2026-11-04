@@ -6,6 +6,9 @@ mobile/node_modules/
 .env
 .env.*
 !.env.example
+*firebase-adminsdk*.json
+firebase-service-account*.json
+service-account*.json
 
 # Swytchcode authentication and local state
 .swytchcode/

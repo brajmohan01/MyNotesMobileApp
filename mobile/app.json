@@ -13,6 +13,7 @@
     "android": {
       "package": "com.brajmohan.mynotes",
       "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#111827"
@@ -34,7 +35,9 @@
           "resizeMode": "contain",
           "backgroundColor": "#111827"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
     ]
   }
 }

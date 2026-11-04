@@ -1,6 +1,12 @@
 
 import express from "express";
-import { listNotes, getNoteContent } from "../services/drive.js";
+import { isSwytchcodeError } from "@swytchcode/runtime";
+import {
+  getNoteContent,
+  listNotes,
+  MultipleNotesFoldersError,
+  NotesFolderNotFoundError,
+} from "../services/drive.js";
 
 const router = express.Router();
 
@@ -8,14 +14,7 @@ const router = express.Router();
 // GET /api/notes?search=project
 router.get("/", async (req, res) => {
   try {
-    const result = await listNotes();
-
-    // Get files from Google Drive response
-    const files = (result.data?.files ?? result.files ?? [])
-      .filter(
-        (file) =>
-          file.mimeType !== "application/vnd.google-apps.folder"
-      );
+    const files = await listNotes(req.firebaseUser.uid);
 
     // Search notes by title
     const search = (req.query.search ?? "")
@@ -40,6 +39,33 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("List notes error:", error);
 
+    if (
+      isSwytchcodeError(error) &&
+      error.details?.category === "tenant_not_connected"
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: "drive_not_connected",
+        message: "Connect your Google Drive to see your notes.",
+      });
+    }
+
+    if (error instanceof NotesFolderNotFoundError) {
+      return res.status(409).json({
+        success: false,
+        code: "notes_folder_not_found",
+        message: error.message,
+      });
+    }
+
+    if (error instanceof MultipleNotesFoldersError) {
+      return res.status(409).json({
+        success: false,
+        code: "multiple_notes_folders",
+        message: error.message,
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Unable to retrieve notes",
@@ -51,7 +77,10 @@ router.get("/", async (req, res) => {
 // Retrieve individual note HTML content
 router.get("/:id", async (req, res) => {
   try {
-    const result = await getNoteContent(req.params.id);
+    const result = await getNoteContent(
+      req.firebaseUser.uid,
+      req.params.id
+    );
 
     let response = result;
 
@@ -73,6 +102,46 @@ router.get("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Read note error:", error);
+
+    if (
+      isSwytchcodeError(error) &&
+      error.details?.category === "tenant_not_connected"
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: "drive_not_connected",
+        message: "Connect your Google Drive to see your notes.",
+      });
+    }
+
+    if (error instanceof NotesFolderNotFoundError) {
+      return res.status(409).json({
+        success: false,
+        code: "notes_folder_not_found",
+        message: error.message,
+      });
+    }
+
+    if (error instanceof MultipleNotesFoldersError) {
+      return res.status(409).json({
+        success: false,
+        code: "multiple_notes_folders",
+        message: error.message,
+      });
+    }
+
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "note_not_found"
+    ) {
+      return res.status(404).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
 
     res.status(500).json({
       success: false,

@@ -2,6 +2,8 @@ FROM node:24-bookworm-slim
 
 WORKDIR /app
 
+RUN mkdir -p /var/data
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -18,6 +20,7 @@ COPY .swytchcode/ ./.swytchcode/
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOME=/var/data
 
 EXPOSE 3000
 
