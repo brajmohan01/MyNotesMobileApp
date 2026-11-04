@@ -9,16 +9,28 @@ Expo development build rather than Expo Go.
    the Android package name `com.brajmohan.mynotes`.
 2. Copy `.env.example` to `.env` if needed. Set `EXPO_PUBLIC_API_URL` to the
    backend's public URL, without the `/api` suffix.
-3. Build and install the development APK, then start Metro:
+3. Upload the public app configuration to EAS and build/install the development
+   APK:
 
    ```sh
    npm ci
+   npx eas-cli@latest env:push --environment development --path .env
    npx eas-cli@latest build --platform android --profile development
+   ```
+
+4. Start Metro:
+
+   ```sh
    npx expo start --dev-client --tunnel
    ```
 
-4. Open the installed MyNotes development app and connect it to the Metro
+5. Open the installed MyNotes development app and connect it to the Metro
    server. The Render URL is used for the API.
+
+Install the development APK once. For subsequent JavaScript/UI changes, keep
+the development app installed and run `npx expo start --dev-client --tunnel`;
+Metro serves the updated code without another EAS build. Backend changes still
+need to be deployed to Render.
 
 Get the Android SHA-1 certificate fingerprint with
 `npx eas-cli@latest credentials --platform android`, register it in Firebase

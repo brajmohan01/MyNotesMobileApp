@@ -1,9 +1,11 @@
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   FlatList,
+  Linking,
   RefreshControl,
   SafeAreaView,
   StatusBar,
@@ -23,7 +25,6 @@ import {
   signInWithCredential,
   signOut,
 } from "firebase/auth";
-import * as WebBrowser from "expo-web-browser";
 import { WebView } from "react-native-webview";
 import {
   auth,
@@ -73,6 +74,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [needsDriveConnection, setNeedsDriveConnection] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [driveConnectLoading, setDriveConnectLoading] = useState(false);
+  const driveConnectInProgress = useRef(false);
+  const driveConnectPendingReturn = useRef(false);
+  const appWasBackgrounded = useRef(false);
 
   async function apiRequest(path, options = {}) {
     if (!user) {
@@ -189,18 +194,27 @@ export default function App() {
   }
 
   async function connectGoogleDrive() {
+    if (driveConnectInProgress.current) return;
+
+    driveConnectInProgress.current = true;
     try {
-      setLoading(true);
+      setDriveConnectLoading(true);
       setError("");
       const { url } = await apiRequest("/drive/connect", {
         method: "POST",
       });
-      await WebBrowser.openBrowserAsync(url);
-      await fetchNotes(search);
+      if (!url) {
+        throw new Error("The server did not return a Google Drive connection link.");
+      }
+
+      driveConnectPendingReturn.current = true;
+      await Linking.openURL(url);
     } catch (connectError) {
+      driveConnectPendingReturn.current = false;
       setError(connectError.message || "Unable to connect Google Drive.");
     } finally {
-      setLoading(false);
+      driveConnectInProgress.current = false;
+      setDriveConnectLoading(false);
     }
   }
 
@@ -235,6 +249,25 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [authReady, user, search, selectedNote]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") {
+        appWasBackgrounded.current = true;
+        return;
+      }
+
+      if (!appWasBackgrounded.current) return;
+      appWasBackgrounded.current = false;
+
+      if (driveConnectPendingReturn.current) {
+        driveConnectPendingReturn.current = false;
+        fetchNotes(search);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [search, user]);
 
   // Handle Android hardware back button
   useEffect(() => {
@@ -423,9 +456,14 @@ export default function App() {
           <TouchableOpacity
             onPress={connectGoogleDrive}
             style={styles.authButton}
+            disabled={driveConnectLoading}
             activeOpacity={0.8}
           >
-            <Text style={styles.authButtonText}>Connect Google Drive</Text>
+            {driveConnectLoading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.authButtonText}>Connect Google Drive</Text>
+            )}
           </TouchableOpacity>
         </View>
       ) : error ? (
