@@ -70,6 +70,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [selectedNote, setSelectedNote] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [serverWaking, setServerWaking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [needsDriveConnection, setNeedsDriveConnection] = useState(false);
@@ -78,6 +79,8 @@ export default function App() {
   const driveConnectInProgress = useRef(false);
   const driveConnectPendingReturn = useRef(false);
   const appWasBackgrounded = useRef(false);
+  const pendingApiRequests = useRef(0);
+  const serverWakeTimer = useRef(null);
 
   async function apiRequest(path, options = {}) {
     if (!user) {
@@ -85,22 +88,38 @@ export default function App() {
     }
 
     const token = await user.getIdToken();
-    const response = await fetch(getApiUrl(path), {
-      ...options,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      const requestError = new Error(data.message || "Request failed.");
-      requestError.code = data.code;
-      throw requestError;
+    pendingApiRequests.current += 1;
+    if (pendingApiRequests.current === 1) {
+      serverWakeTimer.current = setTimeout(() => {
+        setServerWaking(true);
+      }, 2500);
     }
 
-    return data;
+    try {
+      const response = await fetch(getApiUrl(path), {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        const requestError = new Error(data.message || "Request failed.");
+        requestError.code = data.code;
+        throw requestError;
+      }
+
+      return data;
+    } finally {
+      pendingApiRequests.current -= 1;
+      if (pendingApiRequests.current === 0) {
+        clearTimeout(serverWakeTimer.current);
+        serverWakeTimer.current = null;
+        setServerWaking(false);
+      }
+    }
   }
 
   async function signInWithGoogle() {
@@ -443,11 +462,14 @@ export default function App() {
       </View>
 
       {loading && notes.length === 0 ? (
-        <ActivityIndicator
-          size="large"
-          color="#2563eb"
-          style={styles.loader}
-        />
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingMessage}>
+            {serverWaking
+              ? "The server may be waking up. This can take a little while."
+              : "Loading your notes..."}
+          </Text>
+        </View>
       ) : needsDriveConnection ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>
@@ -465,6 +487,11 @@ export default function App() {
               <Text style={styles.authButtonText}>Connect Google Drive</Text>
             )}
           </TouchableOpacity>
+          {serverWaking ? (
+            <Text style={styles.loadingMessage}>
+              The server may be waking up. This can take a little while.
+            </Text>
+          ) : null}
         </View>
       ) : error ? (
         <View style={styles.emptyState}>
@@ -718,8 +745,16 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
   },
 
-  loader: {
+  loadingState: {
+    alignItems: "center",
     marginTop: 50,
+    paddingHorizontal: 24,
+  },
+
+  loadingMessage: {
+    color: "#64748b",
+    marginTop: 14,
+    textAlign: "center",
   },
 
   emptyState: {
