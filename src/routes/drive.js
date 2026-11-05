@@ -4,6 +4,8 @@ import express from "express";
 const router = express.Router();
 
 router.post("/connect", (req, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+
   try {
     const connection = connect({
       provider: "Google Drive",

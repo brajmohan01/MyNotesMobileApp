@@ -32,6 +32,38 @@ the development app installed and run `npx expo start --dev-client --tunnel`;
 Metro serves the updated code without another EAS build. Backend changes still
 need to be deployed to Render.
 
+## Build an APK locally with Gradle
+
+Install JDK 17 and the Android SDK, and configure `ANDROID_HOME` (or
+`android/local.properties`) to point to the SDK. From the `mobile` directory,
+generate the Android project if it is not already present, then build a
+debug APK with the Gradle wrapper:
+
+```sh
+npx expo prebuild --platform android  # only if android/ does not exist
+cd android
+./gradlew assembleDebug
+```
+
+On Windows, run `gradlew.bat assembleDebug` instead. The APK is written to
+`android/app/build/outputs/apk/debug/app-debug.apk`. To build the release
+variant, use `assembleRelease`; configure a private release keystore before
+distributing that APK. The generated `android/` directory is ignored by Git,
+so run prebuild again after cloning if it is missing.
+
+### Fixing Google Sign-In `DEVELOPER_ERROR`
+
+The current Gradle release configuration uses the Android debug keystore, so
+both local debug and release APKs use that keystore's certificate. Get its
+fingerprints from `cd mobile/android && ./gradlew signingReport`, then add the
+SHA-1 (and SHA-256) for `com.brajmohan.mynotes` under Firebase project settings
+for the Android app. Make sure Google is enabled under Firebase Authentication
+sign-in providers, download the refreshed `google-services.json`, and replace
+both `mobile/google-services.json` and `mobile/android/app/google-services.json`
+before rebuilding. If you switch to a private release keystore, register that
+keystore's fingerprints as well. Do not edit the certificate hash in
+`google-services.json` by hand; Google must register the certificate.
+
 Get the Android SHA-1 certificate fingerprint with
 `npx eas-cli@latest credentials --platform android`, register it in Firebase
 Project settings, then download an updated `google-services.json` and rebuild.
@@ -76,3 +108,20 @@ Swytchcode stores per-user Drive credentials in its local home directory.
 Attach a Render persistent disk mounted at `/var/data`; the Docker image sets
 `HOME=/var/data` so those credentials survive restarts and redeploys. Without
 the disk, users will have to reconnect Drive after the service restarts.
+
+For app deployments, set the Render web service's HTTP health check path to
+`/api/health`. This detects failed instances and helps Render manage deploys,
+but it does not prevent an idle Free instance from sleeping. Render Free web
+services spin down after 15 minutes without traffic, take about a minute to
+wake, and lose local filesystem changes when they spin down. Because this app
+stores Swytchcode Drive credentials under `/var/data`, use an always-on paid
+web-service plan with a persistent disk if you need the service and connected
+Drive accounts to remain available. The app now checks readiness and retries
+for up to 90 seconds when the server is waking; it cannot change the Render
+service's plan or guarantee uptime on a Free instance.
+
+Google Drive authorization links are single-use. If the browser says a link was
+already used, return to MyNotes and tap **Connect Google Drive** again to
+generate a fresh link. After returning to the app, MyNotes checks the Drive
+connection and tells you if the account is connected but does not yet have
+exactly one folder named `My Notes`.

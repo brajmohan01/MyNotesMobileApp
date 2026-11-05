@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -33,6 +33,11 @@ import {
 } from "./firebase";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
+const HEALTH_CHECK_TIMEOUT_MS = 8000;
+const SERVER_STARTUP_TIMEOUT_MS = 90000;
+const SERVER_RETRY_DELAY_MS = 2500;
+const SERVER_READY_CACHE_MS = 60000;
+const API_REQUEST_TIMEOUT_MS = 100000;
 const missingAppConfig = [
   !API_BASE_URL && "EXPO_PUBLIC_API_URL",
   !googleWebClientId && "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
@@ -63,6 +68,28 @@ function getApiUrl(path) {
   return `${API_BASE_URL}/api${path}`;
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function getCurrentTime() {
+  return Date.now();
+}
+
+async function fetchWithTimeout(url, options, timeoutMilliseconds) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState(auth?.currentUser ?? null);
   const [authReady, setAuthReady] = useState(Boolean(appConfigError));
@@ -71,56 +98,169 @@ export default function App() {
   const [selectedNote, setSelectedNote] = useState(null);
   const [loading, setLoading] = useState(true);
   const [serverWaking, setServerWaking] = useState(false);
+  const [serverStatus, setServerStatus] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [needsDriveConnection, setNeedsDriveConnection] = useState(false);
+  const [driveSetupIssue, setDriveSetupIssue] = useState("");
+  const [driveConnectionHint, setDriveConnectionHint] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [driveConnectLoading, setDriveConnectLoading] = useState(false);
   const driveConnectInProgress = useRef(false);
   const driveConnectPendingReturn = useRef(false);
   const appWasBackgrounded = useRef(false);
-  const pendingApiRequests = useRef(0);
-  const serverWakeTimer = useRef(null);
+  const serverReadyAt = useRef(0);
+  const serverCheckPromise = useRef(null);
 
-  async function apiRequest(path, options = {}) {
+  const checkServerUntilReady = useCallback(async () => {
+    const deadline = getCurrentTime() + SERVER_STARTUP_TIMEOUT_MS;
+    let attempt = 0;
+    let lastIssue = "The server is not responding yet.";
+    setServerWaking(true);
+
+    try {
+      while (getCurrentTime() < deadline) {
+        attempt += 1;
+        setServerStatus(
+          attempt === 1
+            ? "Checking the MyNotes server..."
+            : `Waking up the server (attempt ${attempt}). The first request can take up to 90 seconds.`
+        );
+
+        try {
+          const response = await fetchWithTimeout(
+            getApiUrl("/health"),
+            { headers: { Accept: "application/json" } },
+            HEALTH_CHECK_TIMEOUT_MS
+          );
+
+          if (response.ok) {
+            const health = await response.json();
+            if (health?.success !== true) {
+              throw new Error("The server returned an invalid health status.");
+            }
+
+            serverReadyAt.current = getCurrentTime();
+            return;
+          }
+
+          if (response.status < 500) {
+            throw new Error(
+              `The server health check failed (HTTP ${response.status}).`
+            );
+          }
+
+          lastIssue = `The server is starting (HTTP ${response.status}).`;
+        } catch (healthError) {
+          if (
+            healthError?.name === "AbortError" ||
+            healthError instanceof TypeError
+          ) {
+            lastIssue = "The server is not responding yet.";
+          } else {
+            throw healthError;
+          }
+        }
+
+        await delay(
+          Math.min(
+            SERVER_RETRY_DELAY_MS,
+            Math.max(0, deadline - getCurrentTime())
+          )
+        );
+      }
+
+      throw new Error(
+        `The server did not become ready after 90 seconds. ${lastIssue} Check your connection and try again.`
+      );
+    } finally {
+      setServerWaking(false);
+      setServerStatus("");
+    }
+  }, []);
+
+  const ensureServerReady = useCallback(async () => {
+    if (getCurrentTime() - serverReadyAt.current < SERVER_READY_CACHE_MS) {
+      return;
+    }
+
+    if (!serverCheckPromise.current) {
+      serverCheckPromise.current = checkServerUntilReady();
+    }
+
+    const check = serverCheckPromise.current;
+    try {
+      await check;
+    } finally {
+      if (serverCheckPromise.current === check) {
+        serverCheckPromise.current = null;
+      }
+    }
+  }, [checkServerUntilReady]);
+
+  const apiRequest = useCallback(async (path, options = {}) => {
     if (!user) {
       throw new Error("Sign in to continue.");
     }
 
+    await ensureServerReady();
     const token = await user.getIdToken();
-    pendingApiRequests.current += 1;
-    if (pendingApiRequests.current === 1) {
-      serverWakeTimer.current = setTimeout(() => {
-        setServerWaking(true);
-      }, 2500);
-    }
 
     try {
-      const response = await fetch(getApiUrl(path), {
+      const response = await fetchWithTimeout(getApiUrl(path), {
         ...options,
         headers: {
+          Accept: "application/json",
           ...options.headers,
           Authorization: `Bearer ${token}`,
         },
-      });
-      const data = await response.json();
+      }, API_REQUEST_TIMEOUT_MS);
+      const responseText = await response.text();
+      let data;
+
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          if (response.ok) {
+            throw new Error("The server returned an invalid response.");
+          }
+        }
+      }
 
       if (!response.ok) {
-        const requestError = new Error(data.message || "Request failed.");
-        requestError.code = data.code;
+        if (response.status >= 500) {
+          serverReadyAt.current = 0;
+        }
+        const requestError = new Error(
+          data?.message ||
+            (response.status >= 500
+              ? `The server is temporarily unavailable (HTTP ${response.status}). Try again shortly.`
+              : `The request failed (HTTP ${response.status}).`)
+        );
+        requestError.code = data?.code;
         throw requestError;
       }
 
-      return data;
-    } finally {
-      pendingApiRequests.current -= 1;
-      if (pendingApiRequests.current === 0) {
-        clearTimeout(serverWakeTimer.current);
-        serverWakeTimer.current = null;
-        setServerWaking(false);
+      if (!data || typeof data !== "object") {
+        throw new Error("The server returned an invalid response.");
       }
+
+      return data;
+    } catch (requestError) {
+      if (requestError?.name === "AbortError") {
+        serverReadyAt.current = 0;
+        throw new Error("The server took too long to respond. Please try again.");
+      }
+      if (requestError instanceof TypeError) {
+        serverReadyAt.current = 0;
+        throw new Error(
+          "Could not reach the MyNotes server. Check your internet connection and try again."
+        );
+      }
+      throw requestError;
     }
-  }
+  }, [user, ensureServerReady]);
 
   async function signInWithGoogle() {
     try {
@@ -163,21 +303,38 @@ export default function App() {
   }
 
   // Fetch notes from Express backend
-  async function fetchNotes(query = "") {
+  const fetchNotes = useCallback(async (
+    query = "",
+    { afterDriveConnect = false } = {}
+  ) => {
     if (!user) return;
 
     try {
+      setLoading(true);
       setError("");
       setNeedsDriveConnection(false);
+      setDriveSetupIssue("");
 
       const data = await apiRequest(
         `/notes?search=${encodeURIComponent(query)}`
       );
       setNotes(data.notes);
+      setDriveConnectionHint("");
     } catch (err) {
       if (err.code === "drive_not_connected") {
         setNotes([]);
         setNeedsDriveConnection(true);
+        setDriveConnectionHint(
+          afterDriveConnect
+            ? "Google Drive is not connected yet. If the browser says the link was already used, return here and tap Connect Google Drive to create a fresh link."
+            : ""
+        );
+      } else if (
+        err.code === "notes_folder_not_found" ||
+        err.code === "multiple_notes_folders"
+      ) {
+        setNotes([]);
+        setDriveSetupIssue(err.message);
       } else {
         setError(err.message || "Something went wrong");
       }
@@ -185,7 +342,7 @@ export default function App() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [apiRequest, user]);
 
   // Fetch individual note
   async function openNote(note) {
@@ -201,9 +358,15 @@ export default function App() {
         ...note,
         content: data.content,
       });
+      setDriveSetupIssue("");
     } catch (err) {
       if (err.code === "drive_not_connected") {
         setNeedsDriveConnection(true);
+      } else if (
+        err.code === "notes_folder_not_found" ||
+        err.code === "multiple_notes_folders"
+      ) {
+        setDriveSetupIssue(err.message);
       } else {
         setError(err.message || "Unable to open note");
       }
@@ -227,6 +390,9 @@ export default function App() {
       }
 
       driveConnectPendingReturn.current = true;
+      setDriveConnectionHint(
+        "Complete the Google Drive step in your browser, then return here. This authorization link can only be used once."
+      );
       await Linking.openURL(url);
     } catch (connectError) {
       driveConnectPendingReturn.current = false;
@@ -267,12 +433,13 @@ export default function App() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [authReady, user, search, selectedNote]);
+  }, [authReady, user, search, selectedNote, fetchNotes]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") {
         appWasBackgrounded.current = true;
+        serverReadyAt.current = 0;
         return;
       }
 
@@ -281,12 +448,13 @@ export default function App() {
 
       if (driveConnectPendingReturn.current) {
         driveConnectPendingReturn.current = false;
-        fetchNotes(search);
+        setDriveConnectionHint("Checking your Google Drive connection...");
+        fetchNotes(search, { afterDriveConnect: true });
       }
     });
 
     return () => subscription.remove();
-  }, [search, user]);
+  }, [fetchNotes, search]);
 
   // Handle Android hardware back button
   useEffect(() => {
@@ -453,6 +621,13 @@ export default function App() {
         />
       </View>
 
+      {serverWaking && notes.length > 0 ? (
+        <View style={styles.serverStatusContainer}>
+          <ActivityIndicator size="small" color="#2563eb" />
+          <Text style={styles.serverStatusText}>{serverStatus}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Your Notes</Text>
 
@@ -466,15 +641,19 @@ export default function App() {
           <ActivityIndicator size="large" color="#2563eb" />
           <Text style={styles.loadingMessage}>
             {serverWaking
-              ? "The server may be waking up. This can take a little while."
+              ? serverStatus
               : "Loading your notes..."}
           </Text>
         </View>
       ) : needsDriveConnection ? (
         <View style={styles.emptyState}>
+          {driveConnectionHint ? (
+            <Text style={styles.setupDescription}>{driveConnectionHint}</Text>
+          ) : null}
           <Text style={styles.emptyText}>
             Connect your Google Drive to see your notes.
           </Text>
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <TouchableOpacity
             onPress={connectGoogleDrive}
             style={styles.authButton}
@@ -487,11 +666,18 @@ export default function App() {
               <Text style={styles.authButtonText}>Connect Google Drive</Text>
             )}
           </TouchableOpacity>
-          {serverWaking ? (
-            <Text style={styles.loadingMessage}>
-              The server may be waking up. This can take a little while.
-            </Text>
-          ) : null}
+        </View>
+      ) : driveSetupIssue ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.errorText}>{driveSetupIssue}</Text>
+          <Text style={styles.setupDescription}>
+            In the Google Drive account you connected, create exactly one
+            folder named “My Notes” and put your notes inside it. Then check
+            again.
+          </Text>
+          <TouchableOpacity onPress={() => fetchNotes(search)}>
+            <Text style={styles.retryButton}>Check Google Drive again</Text>
+          </TouchableOpacity>
         </View>
       ) : error ? (
         <View style={styles.emptyState}>
@@ -757,6 +943,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  serverStatusContainer: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 14,
+  },
+
+  serverStatusText: {
+    color: "#64748b",
+    flex: 1,
+    fontSize: 13,
+  },
+
   emptyState: {
     alignItems: "center",
     marginTop: 50,
@@ -767,6 +967,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 40,
     color: "#64748b",
+  },
+
+  setupDescription: {
+    color: "#64748b",
+    lineHeight: 21,
+    marginTop: 16,
+    textAlign: "center",
   },
 
   errorText: {

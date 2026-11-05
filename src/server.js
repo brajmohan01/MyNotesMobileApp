@@ -9,8 +9,10 @@ const app = express();
 app.use(express.json());
 
 app.get("/api/health", (req, res) => {
+  res.set("Cache-Control", "no-store");
   res.json({
     success: true,
+    status: "ready",
     message: "MyNotes Mobile API is running",
   });
 });

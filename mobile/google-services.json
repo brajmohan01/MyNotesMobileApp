@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "156696498305-g19rsb5ffd35s01ugertgq8nht2dlprp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brajmohan.mynotes",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
           "client_id": "156696498305-1ucvqfh5gd9iu7kfoems18qdnl2e181u.apps.googleusercontent.com",
           "client_type": 3
         }
