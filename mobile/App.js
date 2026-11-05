@@ -384,6 +384,10 @@ export default function App() {
       setError("");
       const { url } = await apiRequest("/drive/connect", {
         method: "POST",
+        headers: {
+          "Cache-Control": "no-cache, no-store",
+          Pragma: "no-cache",
+        },
       });
       if (!url) {
         throw new Error("The server did not return a Google Drive connection link.");
