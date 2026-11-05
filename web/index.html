@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f5f1" />
+    <meta
+      name="description"
+      content="A quiet home for your notes from Google Drive."
+    />
+    <title>MyNotes — Your notes, everywhere</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/main.js"></script>
+  </head>
+  <body>
+    <div class="page-glow page-glow-one" aria-hidden="true"></div>
+    <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+    <main id="auth-view" class="auth-view">
+      <a class="brand brand-auth" href="/" aria-label="MyNotes home">
+        <span class="brand-mark" aria-hidden="true">m</span>
+        <span>mynotes<span class="brand-period">.</span></span>
+      </a>
+      <section class="auth-card">
+        <div class="eyebrow"><span class="eyebrow-dot"></span> A calmer place for ideas</div>
+        <h1>Your notes,<br /><span>right where you need them.</span></h1>
+        <p class="auth-copy">
+          Sign in with Google to open your notes stored safely in your own Drive.
+        </p>
+        <button id="sign-in" class="button button-dark button-wide" type="button">
+          <span class="google-g" aria-hidden="true">G</span>
+          <span>Continue with Google</span>
+        </button>
+        <p id="auth-error" class="message message-error" role="alert" hidden></p>
+        <p class="privacy-note">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6V4.5a3.5 3.5 0 0 1 7 0V6M3.5 6h9v7h-9z" /></svg>
+          Your notes stay in your Google Drive
+        </p>
+      </section>
+      <p class="page-footnote">Simple notes. Yours to keep.</p>
+    </main>
+
+    <main id="app-view" class="app-view" hidden>
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="MyNotes home">
+          <span class="brand-mark" aria-hidden="true">m</span>
+          <span>mynotes<span class="brand-period">.</span></span>
+        </a>
+        <div class="topbar-actions">
+          <span id="user-email" class="user-email"></span>
+          <button id="sign-out" class="button button-quiet" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar">
+          <div class="sidebar-label">YOUR SPACE</div>
+          <button class="nav-item nav-item-active" type="button">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h8l4 4v9H4zM12 3.5v4h4M7 11h6M7 14h6" /></svg>
+            <span>All notes</span>
+            <span id="sidebar-count" class="sidebar-count">0</span>
+          </button>
+          <div class="sidebar-bottom">
+            <span class="drive-indicator"></span>
+            <span>Connected to Google Drive</span>
+          </div>
+        </aside>
+
+        <section class="notes-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR LIBRARY</div>
+              <h1 id="page-title">Your notes</h1>
+              <p id="page-subtitle" class="panel-subtitle">A little space for everything on your mind.</p>
+            </div>
+            <button id="refresh-notes" class="icon-button" type="button" aria-label="Refresh notes" title="Refresh notes">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.2 8A6.5 6.5 0 1 0 16.5 10M16.2 4.5V8h-3.5" /></svg>
+            </button>
+          </div>
+
+          <label class="search-box">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.6" /><path d="m13 13 4 4" /></svg>
+            <input id="search" type="search" placeholder="Find a note..." autocomplete="off" />
+            <kbd>/</kbd>
+          </label>
+
+          <div id="status-message" class="message" role="status" hidden></div>
+          <div id="notes-list" class="notes-list" aria-live="polite"></div>
+        </section>
+
+        <aside class="detail-panel">
+          <div id="detail-empty" class="detail-empty">
+            <div class="empty-illustration" aria-hidden="true">
+              <span class="paper paper-back"></span>
+              <span class="paper paper-front"><i></i><i></i><i></i></span>
+              <span class="sparkle sparkle-one">✳</span>
+              <span class="sparkle sparkle-two">✦</span>
+            </div>
+            <h2>Make yourself at home</h2>
+            <p>Pick a note from your library and it’ll open right here.</p>
+          </div>
+          <article id="note-detail" class="note-detail" hidden>
+            <div class="detail-heading">
+              <button id="back-to-notes" class="back-button" type="button">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4-6 6 6 6" /></svg>
+                <span>All notes</span>
+              </button>
+              <span id="note-date" class="note-date"></span>
+            </div>
+            <h2 id="note-title" class="note-title"></h2>
+            <iframe
+              id="note-content"
+              class="note-content"
+              title="Note contents"
+              sandbox=""
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </article>
+        </aside>
+      </section>
+      <footer class="app-footer">
+        <span>Made for the things you want to remember.</span>
+        <span class="footer-drive"><span class="drive-indicator"></span> Your Drive, your notes</span>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,5 +1,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const APP_NAME = "mynotesmobileapp";
 let firebaseAuth;
@@ -9,9 +11,27 @@ function getFirebaseAuth() {
     return firebaseAuth;
   }
 
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+  if (!serviceAccountJson && serviceAccountPath) {
+    try {
+      serviceAccountJson = readFileSync(
+        path.resolve(process.cwd(), serviceAccountPath),
+        "utf8"
+      );
+    } catch (error) {
+      throw new Error(
+        `Could not read Firebase service account file at ${serviceAccountPath}`,
+        { cause: error }
+      );
+    }
+  }
+
   if (!serviceAccountJson) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
+    throw new Error(
+      "Set FIREBASE_SERVICE_ACCOUNT_PATH to a Firebase service-account JSON file, or FIREBASE_SERVICE_ACCOUNT_JSON to its contents."
+    );
   }
 
   let serviceAccount;
@@ -65,7 +85,8 @@ export async function requireFirebaseUser(req, res, next) {
     return res.status(503).json({
       success: false,
       code: "authentication_unavailable",
-      message: "Server authentication is not configured.",
+      message:
+        "Firebase Admin credentials are missing or invalid. For local setup, copy .env.example to .env and set FIREBASE_SERVICE_ACCOUNT_PATH to your Firebase service-account JSON file.",
     });
   }
 
